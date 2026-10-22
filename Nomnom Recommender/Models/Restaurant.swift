@@ -12,6 +12,9 @@ struct Restaurant: Decodable, Identifiable {
     // Restaurant information
     let restaurantID: String
     let restaurantName: String
+    let address: String
+    let openingHours: String?
+    var isBookmarked: Bool = false
     
     // Location
     let latitude: Double
@@ -36,6 +39,8 @@ struct Restaurant: Decodable, Identifiable {
     enum CodingKeys: String, CodingKey {
         case restaurantID = "restaurant_id"
         case restaurantName = "restaurant_name"
+        case address
+        case openingHours = "opening_hours"
         case latitude
         case longitude
         case priceMinIDR = "price_min_idr"
@@ -53,6 +58,8 @@ struct Restaurant: Decodable, Identifiable {
         
         restaurantID = try container.decode(String.self, forKey: .restaurantID)
         restaurantName = try container.decode(String.self, forKey: .restaurantName)
+        address = try container.decode(String.self, forKey: .address)
+        openingHours = try container.decodeIfPresent(String.self, forKey: .openingHours) ?? "unknown"
         latitude = try container.decode(Double.self, forKey: .latitude)
         longitude = try container.decode(Double.self, forKey: .longitude)
         priceMinIDR = try container.decode(Double.self, forKey: .priceMinIDR)
