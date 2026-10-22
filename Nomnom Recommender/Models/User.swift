@@ -25,8 +25,8 @@ struct User: Identifiable {
     var preferredFoodTags: [String]?
     var spiceTolerance: String?
     
-    var budgetMinIDR: Double?
-    var budgetMaxIDR: Double?
+    var budgetMinIDR: Double = 0
+    var budgetMaxIDR: Double = 0
     
     var id: String { userID }
 }
