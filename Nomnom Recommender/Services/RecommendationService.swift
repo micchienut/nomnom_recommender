@@ -65,7 +65,7 @@ extension RecommendationService {
         let allergens = overlap(restaurant.allergensPresent ?? [], user.allergensToAvoid ?? [])
         if !allergens.isEmpty {
             return "Contains allergens: " +
-            allergens.sorted().joined(separator: "")
+            allergens.sorted().joined(separator: ", ")
         }
         
         // Ingredients
@@ -100,7 +100,7 @@ extension RecommendationService {
         
         // Vegetarian
         if restrictions.contains("vegetarian") {
-            if !options.contains("vegerarian_options") &&
+            if !options.contains("vegetarian_options") &&
                 !options.contains("vegan_options") {
                 return "No vegetarian or vegan options available."
             }
@@ -167,7 +167,7 @@ extension RecommendationService {
     private func clamp(
         _ value: Double,
         min lower: Double = 0,
-        min upper: Double = 1
+        max upper: Double = 1
     ) -> Double {
         min(max(value, lower), upper)
     }

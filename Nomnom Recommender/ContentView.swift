@@ -8,14 +8,16 @@
 import SwiftUI
 
 struct ContentView: View {
+    @State private var preferences = PreferencesViewModel()
+    @State private var recommendations = RecommendationViewModel()
+
     var body: some View {
-        VStack {
-            Image(systemName: "globe")
-                .imageScale(.large)
-                .foregroundStyle(.tint)
-            Text("Hello, world!")
+        NavigationStack {
+            PreferencesFormView(
+                preferences: preferences,
+                recommendations: recommendations
+            )
         }
-        .padding()
     }
 }
 
