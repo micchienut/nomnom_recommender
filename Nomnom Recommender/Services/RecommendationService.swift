@@ -12,7 +12,7 @@ struct RecommendationScores {
     let cuisine: Double
     let foodTags: Double
     let budget: Double
-    let distance: Double
+//    let distance: Double
     let finalScore: Double
 }
 
@@ -26,17 +26,17 @@ struct RestaurantRecommendation: Identifiable {
 }
 
 // MARK: Excluded (not in current IA)
-//struct ExcludedRestaurant: Identifiable {
-//    let restaurant: Restaurant
-//    let reason: String
-//    
-//    var id: String { restaurant.id }
-//}
+struct ExcludedRestaurant: Identifiable {
+    let restaurant: Restaurant
+    let reason: String
+    
+    var id: String { restaurant.id }
+}
 
-// MARK: Result
+// MARK: Recommendation Result
 struct RecommendationResult {
     let recommendations: [RestaurantRecommendation]
-//    let excluded: [ExcludedRestaurant]
+    let excluded: [ExcludedRestaurant]
 }
 
 // MARK: - Recommendation Service
@@ -159,5 +159,146 @@ extension RecommendationService {
         }
         
         return nil
+    }
+}
+
+// MARK: Clamp Function
+extension RecommendationService {
+    private func clamp(
+        _ value: Double,
+        min lower: Double = 0,
+        min upper: Double = 1
+    ) -> Double {
+        min(max(value, lower), upper)
+    }
+}
+
+// MARK: Cuisine Score
+extension RecommendationService {
+    private func cuisineScore(
+        _ restaurant: Restaurant,
+        _ user: User
+    ) -> Double {
+        guard !(user.preferredCuisine?.isEmpty ?? true) else {
+            return 0
+        }
+        
+        return Double(
+            overlap(user.preferredCuisine ?? [], restaurant.cuisine ?? []).count
+        ) / Double(user.preferredCuisine?.count ?? 1)
+    }
+}
+
+// MARK: Food Tag Score
+extension RecommendationService {
+    private func foodTagScore(
+        _ restaurant: Restaurant,
+        _ user: User
+    ) -> Double {
+        guard !(user.preferredFoodTags?.isEmpty ?? true) else {
+            return 0
+        }
+        
+        return Double(
+            overlap(user.preferredFoodTags ?? [], restaurant.localSpecialtyTags ?? []).count
+        ) / Double(user.preferredFoodTags?.count ?? 1)
+    }
+}
+
+// MARK: Budget Score
+extension RecommendationService {
+    private func budgetScore(
+        _ restaurant: Restaurant,
+        _ user: User
+    ) -> Double {
+        let restaurantMin = restaurant.priceMinIDR
+        let restaurantMax = restaurant.priceMaxIDR
+        let userMin = user.budgetMinIDR
+        let userMax = user.budgetMaxIDR
+        
+        if restaurantMin <= userMax && restaurantMax >= userMin {
+            // Perfect match
+            if restaurantMin >= userMin && restaurantMax <= userMax {
+                return 1.0
+            }
+            // Partial match
+            // TODO: Adjust as needed
+            return 0.85
+        }
+        
+        // Too expensive
+        if restaurantMin > userMax {
+            return clamp(
+                1-(restaurantMin-userMax) / max(userMax, 1)
+            )
+        }
+        
+        // Too cheap
+        return clamp(
+            1-(userMin-restaurantMax) / max(userMin, 1)
+        )
+    }
+}
+
+// MARK: Distance Score
+// TODO: Add distance score metrics, need MapKit
+//extension RecommendationService {
+//    private func distanceScore(
+//        _ restaurant: Restaurant,
+//        _ user: User
+//    ) -> Double {
+//    }
+//}
+
+// MARK: Calculate Score
+extension RecommendationService {
+    private func calculateScore(
+        _ restaurant: Restaurant,
+        _ user: User
+    ) -> RecommendationScores {
+        let cuisine = cuisineScore(restaurant, user)
+        let foodTags = foodTagScore(restaurant, user)
+        let budget = budgetScore(restaurant, user)
+        
+        let finalScore = (cuisine + foodTags + budget) / 3.0
+        
+        return RecommendationScores(cuisine: cuisine, foodTags: foodTags, budget: budget, finalScore: finalScore)
+    }
+}
+
+// MARK: Output
+extension RecommendationService {
+    func recommend(
+        restaurants: [Restaurant],
+        for user: User,
+        topN: Int = 3 // adjust as needed
+    ) -> RecommendationResult {
+        var eligible: [RestaurantRecommendation] = []
+        var excluded: [ExcludedRestaurant] = []
+        
+        for restaurant in restaurants {
+            if let reason = exclusionReason(for: restaurant, user: user) {
+                excluded.append(
+                    ExcludedRestaurant(restaurant: restaurant, reason: reason)
+                )
+                continue
+            }
+            
+            eligible.append(
+                RestaurantRecommendation(restaurant: restaurant, scores: calculateScore(restaurant, user))
+            )
+        }
+        
+        eligible.sort {
+            if $0.scores.finalScore == $1.scores.finalScore {
+                return $0.restaurant.restaurantName < $1.restaurant.restaurantName
+            }
+            return $0.scores.finalScore > $1.scores.finalScore
+        }
+        
+        return RecommendationResult(
+            recommendations: Array(eligible.prefix(max(0, topN))),
+            excluded: excluded
+        )
     }
 }
