@@ -9,30 +9,32 @@ import SwiftUI
 
 // MARK: - Recommendation Results
 struct RecommendationResultsView: View {
-    let viewModel: RecommendationViewModel
+    let result: RecommendationResult?
+    let topN: Int
 
     var body: some View {
         Group {
-            if let result = viewModel.result {
+            if let result {
                 List {
                     Section {
                         if result.recommendations.isEmpty {
                             ContentUnavailableView(
                                 "No Matches",
                                 systemImage: "fork.knife",
-                                description: Text("Every restaurant was excluded. Loosen your restrictions and try again.")
+                                description: Text("No restaurants were found near the destination.")
                             )
                         } else {
                             ForEach(Array(result.recommendations.enumerated()), id: \.element.id) { index, recommendation in
                                 RestaurantRowView(
                                     restaurant: recommendation.restaurant,
                                     scores: recommendation.scores,
-                                    rank: index + 1
+                                    rank: index + 1,
+                                    warnings: recommendation.warnings
                                 )
                             }
                         }
                     } header: {
-                        Text("Recommended (top \(viewModel.topN))")
+                        Text("Recommended (top \(topN))")
                     }
 
                     if !result.excluded.isEmpty {
@@ -70,6 +72,6 @@ struct RecommendationResultsView: View {
     viewModel.recommend(for: preferences.makeUser())
 
     return NavigationStack {
-        RecommendationResultsView(viewModel: viewModel)
+        RecommendationResultsView(result: viewModel.result, topN: viewModel.topN)
     }
 }

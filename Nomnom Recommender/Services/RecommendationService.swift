@@ -21,6 +21,7 @@ struct RecommendationScores {
 struct RestaurantRecommendation: Identifiable {
     let restaurant: Restaurant
     let scores: RecommendationScores
+    var warnings: [String] = [] // restrictions this restaurant may violate, only set for fallback picks
     
     var id: String { restaurant.id }
 }
@@ -28,8 +29,9 @@ struct RestaurantRecommendation: Identifiable {
 // MARK: Excluded (not in current IA)
 struct ExcludedRestaurant: Identifiable {
     let restaurant: Restaurant
-    let reason: String
+    let violations: [String]
     
+    var reason: String { violations.joined(separator: "; ") }
     var id: String { restaurant.id }
 }
 
@@ -57,29 +59,31 @@ extension RecommendationService {
 
 // MARK: Exclusion (not in current IA)
 extension RecommendationService {
-    private func exclusionReason(
+    private func violations(
         for restaurant: Restaurant,
         user: User
-    ) -> String? {
+    ) -> [String] {
+        var violations: [String] = []
+        
         // Allergens
         let allergens = overlap(restaurant.allergensPresent ?? [], user.allergensToAvoid ?? [])
         if !allergens.isEmpty {
-            return "Contains allergens: " +
-            allergens.sorted().joined(separator: ", ")
+            violations.append("Contains allergens: " +
+            allergens.sorted().joined(separator: ", "))
         }
         
         // Ingredients
         let ingredients = overlap(restaurant.ingredientFlags ?? [], user.dislikedIngredients ?? [])
         if !ingredients.isEmpty {
-            return "Contains disliked ingredients: " +
-            ingredients.sorted().joined(separator: ", ")
+            violations.append("Contains disliked ingredients: " +
+            ingredients.sorted().joined(separator: ", "))
         }
         
         // Tags
         let tags = overlap(restaurant.localSpecialtyTags ?? [], user.dislikedFoodTags ?? [])
         if !tags.isEmpty {
-            return "Contains disliked tags: " +
-            tags.sorted().joined(separator: ", ")
+            violations.append("Contains disliked tags: " +
+            tags.sorted().joined(separator: ", "))
         }
         
         // Restrictions
@@ -94,7 +98,7 @@ extension RecommendationService {
             : ["halal_certified"]
             
             if let status = restaurant.halalStatus, !allowedStatuses.contains(status) {
-                return "Halal status '\(restaurant.halalStatus ?? "Unknown")' does not meet the user's requirement."
+                violations.append("Halal status '\(restaurant.halalStatus ?? "Unknown")' does not meet the user's requirement.")
             }
         }
         
@@ -102,7 +106,7 @@ extension RecommendationService {
         if restrictions.contains("vegetarian") {
             if !options.contains("vegetarian_options") &&
                 !options.contains("vegan_options") {
-                return "No vegetarian or vegan options available."
+                violations.append("No vegetarian or vegan options available.")
             }
             
             let meatFlags: Set<String> = [
@@ -113,15 +117,15 @@ extension RecommendationService {
             let conflicts = ingredientsPresent.intersection(meatFlags)
             
             if !conflicts.isEmpty {
-                return "Contains non-vegetarian ingredient flags: " +
-                conflicts.sorted().joined(separator: ", ")
+                violations.append("Contains non-vegetarian ingredient flags: " +
+                conflicts.sorted().joined(separator: ", "))
             }
         }
         
         // Vegan
         if restrictions.contains("vegan") {
             if !options.contains("vegan_options") {
-                return "No vegan options available."
+                violations.append("No vegan options available.")
             }
             
             let nonVeganFlags: Set<String> = [
@@ -133,8 +137,8 @@ extension RecommendationService {
             let conflicts = ingredientsPresent.intersection(nonVeganFlags)
             
             if !conflicts.isEmpty {
-                return "Contains non-vegan ingredient flags: " +
-                conflicts.sorted().joined(separator: ", ")
+                violations.append("Contains non-vegan ingredient flags: " +
+                conflicts.sorted().joined(separator: ", "))
             }
         }
         
@@ -142,7 +146,7 @@ extension RecommendationService {
         if restrictions.contains("pescatarian") {
             if !options.contains("pescatarian_options")
                 && !options.contains("vegan_options") {
-                return "No pescatarian options available."
+                violations.append("No pescatarian options available.")
             }
             
             let nonPescatarianFlags: Set<String> = [
@@ -153,12 +157,12 @@ extension RecommendationService {
             let conflicts = ingredientsPresent.intersection(nonPescatarianFlags)
             
             if !conflicts.isEmpty {
-                return "Contains non-pescatarian ingredient flags: " +
-                conflicts.sorted().joined(separator: ", ")
+                violations.append("Contains non-pescatarian ingredient flags: " +
+                conflicts.sorted().joined(separator: ", "))
             }
         }
         
-        return nil
+        return violations
     }
 }
 
@@ -271,34 +275,162 @@ extension RecommendationService {
     func recommend(
         restaurants: [Restaurant],
         for user: User,
-        topN: Int = 3 // adjust as needed
+        topN: Int = 10 // adjust as needed
+    ) -> RecommendationResult {
+        rank(
+            restaurants,
+            topN: topN,
+            violations: { violations(for: $0, user: user) },
+            calculateScore: { calculateScore($0, user) }
+        )
+    }
+    
+    // Restaurants that break a restriction only fill spots the clean matches leave open, fewest warnings first
+    private func rank(
+        _ restaurants: [Restaurant],
+        topN: Int,
+        violations: (Restaurant) -> [String],
+        calculateScore: (Restaurant) -> RecommendationScores
     ) -> RecommendationResult {
         var eligible: [RestaurantRecommendation] = []
+        var fallback: [RestaurantRecommendation] = []
         var excluded: [ExcludedRestaurant] = []
         
         for restaurant in restaurants {
-            if let reason = exclusionReason(for: restaurant, user: user) {
-                excluded.append(
-                    ExcludedRestaurant(restaurant: restaurant, reason: reason)
-                )
-                continue
-            }
+            let found = violations(restaurant)
+            let scores = calculateScore(restaurant)
             
-            eligible.append(
-                RestaurantRecommendation(restaurant: restaurant, scores: calculateScore(restaurant, user))
-            )
+            if found.isEmpty {
+                eligible.append(
+                    RestaurantRecommendation(restaurant: restaurant, scores: scores)
+                )
+            } else {
+                excluded.append(
+                    ExcludedRestaurant(restaurant: restaurant, violations: found)
+                )
+                fallback.append(
+                    RestaurantRecommendation(restaurant: restaurant, scores: scores, warnings: found)
+                )
+            }
         }
         
-        eligible.sort {
-            if $0.scores.finalScore == $1.scores.finalScore {
-                return $0.restaurant.restaurantName < $1.restaurant.restaurantName
+        eligible.sort(by: ranksHigher)
+        fallback.sort {
+            if $0.warnings.count == $1.warnings.count {
+                return ranksHigher($0, $1)
             }
-            return $0.scores.finalScore > $1.scores.finalScore
+            return $0.warnings.count < $1.warnings.count
         }
+        
+        let count = max(0, topN)
         
         return RecommendationResult(
-            recommendations: Array(eligible.prefix(max(0, topN))),
+            recommendations: Array((eligible + fallback).prefix(count)),
             excluded: excluded
+        )
+    }
+    
+    private func ranksHigher(
+        _ first: RestaurantRecommendation,
+        _ second: RestaurantRecommendation
+    ) -> Bool {
+        if first.scores.finalScore == second.scores.finalScore {
+            return first.restaurant.restaurantName < second.restaurant.restaurantName
+        }
+        return first.scores.finalScore > second.scores.finalScore
+    }
+}
+
+// MARK: - Group
+// MARK: Destination Filter
+extension RecommendationService {
+    func nearby(
+        _ restaurants: [Restaurant],
+        landmarkID: String,
+        withinMeters maxDistanceM: Double
+    ) -> [Restaurant] {
+        restaurants.filter {
+            $0.landmarkID == landmarkID && ($0.distanceM ?? .infinity) <= maxDistanceM
+        }
+    }
+}
+
+// MARK: Group Proxy User
+// Carries the group's restrictions and budget so the single-user rules can be reused as they are
+extension RecommendationService {
+    private func proxyUser(for group: GroupPreferences) -> User {
+        User(
+            userID: "group",
+            username: "group",
+            name: "Group",
+            dietaryRestrictions: group.dietaryRestrictions.sorted(),
+            allergensToAvoid: group.allergensToAvoid.sorted(),
+            dislikedIngredients: group.dislikedIngredients.sorted(),
+            dislikedFoodTags: group.dislikedFoodTags.sorted(),
+            budgetMinIDR: group.budgetMinIDR,
+            budgetMaxIDR: group.budgetMaxIDR
+        )
+    }
+}
+
+// MARK: Group Cuisine Score
+extension RecommendationService {
+    private func cuisineScore(
+        _ restaurant: Restaurant,
+        _ group: GroupPreferences
+    ) -> Double {
+        guard !group.cuisineVotes.isEmpty else {
+            return 0.5
+        }
+        
+        // Most votes on any one of its cuisines = members it surely suits, without counting anyone twice
+        let votes = (restaurant.cuisine ?? []).map { group.cuisineVotes[$0] ?? 0 }.max() ?? 0
+        
+        return Double(votes) / Double(max(group.memberCount, 1))
+    }
+}
+
+// MARK: Group Food Tag Score
+extension RecommendationService {
+    private func foodTagScore(
+        _ restaurant: Restaurant,
+        _ group: GroupPreferences
+    ) -> Double {
+        guard !group.foodTagVotes.isEmpty else {
+            return 0.5
+        }
+        
+        let votes = (restaurant.localSpecialtyTags ?? []).map { group.foodTagVotes[$0] ?? 0 }.max() ?? 0
+        
+        return Double(votes) / Double(max(group.memberCount, 1))
+    }
+}
+
+// MARK: Group Output
+extension RecommendationService {
+    func recommend(
+        restaurants: [Restaurant],
+        for group: GroupPreferences,
+        topN: Int = 10
+    ) -> RecommendationResult {
+        let proxy = proxyUser(for: group)
+        
+        return rank(
+            restaurants,
+            topN: topN,
+            violations: { violations(for: $0, user: proxy) },
+            calculateScore: { restaurant in
+                let cuisine = cuisineScore(restaurant, group)
+                let foodTags = foodTagScore(restaurant, group)
+                let budget = budgetScore(restaurant, proxy)
+                
+                return RecommendationScores(
+                    cuisine: cuisine,
+                    foodTags: foodTags,
+                    budget: budget,
+                    finalScore: (cuisine + foodTags + budget) / 3.0
+                )
+            }
         )
     }
 }
