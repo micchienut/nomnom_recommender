@@ -18,14 +18,14 @@ final class RecommendationViewModel {
     var service = RecommendationService()
     var topN = 3
 
-    init(filename: String = "restaurants") {
+    init(filename: String = "places") {
         loadRestaurants(from: filename)
     }
 }
 
 // MARK: Data Loading
 extension RecommendationViewModel {
-    func loadRestaurants(from filename: String = "restaurants") {
+    func loadRestaurants(from filename: String = "places") {
         do {
             restaurants = try JSONDataLoader.load([Restaurant].self, from: filename)
             loadError = nil
