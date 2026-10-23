@@ -10,13 +10,25 @@ import SwiftUI
 struct ContentView: View {
     @State private var preferences = PreferencesViewModel()
     @State private var recommendations = RecommendationViewModel()
+    @State private var groupSession = GroupSessionViewModel()
 
     var body: some View {
-        NavigationStack {
-            PreferencesFormView(
-                preferences: preferences,
-                recommendations: recommendations
-            )
+        TabView {
+            NavigationStack {
+                PreferencesFormView(
+                    preferences: preferences,
+                    recommendations: recommendations
+                )
+            }
+            .tabItem { Label("Solo", systemImage: "person") }
+
+            NavigationStack {
+                GroupSessionView(
+                    session: groupSession,
+                    recommendations: recommendations
+                )
+            }
+            .tabItem { Label("Group", systemImage: "person.3") }
         }
     }
 }
