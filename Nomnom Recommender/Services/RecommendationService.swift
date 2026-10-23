@@ -180,7 +180,7 @@ extension RecommendationService {
         _ user: User
     ) -> Double {
         guard !(user.preferredCuisine?.isEmpty ?? true) else {
-            return 0
+            return 0.5 // might still need to adjust the score if the user doesn't put anything on the input field
         }
         
         return Double(
@@ -196,7 +196,7 @@ extension RecommendationService {
         _ user: User
     ) -> Double {
         guard !(user.preferredFoodTags?.isEmpty ?? true) else {
-            return 0
+            return 0.5
         }
         
         return Double(
@@ -223,7 +223,7 @@ extension RecommendationService {
             }
             // Partial match
             // TODO: Adjust as needed
-            return 0.85
+            return 0.7
         }
         
         // Too expensive
