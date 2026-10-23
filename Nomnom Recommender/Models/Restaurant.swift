@@ -12,7 +12,7 @@ struct Restaurant: Decodable, Identifiable {
     // Restaurant information
     let restaurantID: String
     let restaurantName: String
-    let address: String
+    let address: String?
     let openingHours: String?
     var isBookmarked: Bool = false
     
@@ -33,7 +33,12 @@ struct Restaurant: Decodable, Identifiable {
     let ingredientFlags: [String]?
     let allergensPresent: [String]?
     let halalStatus: String?
-    
+
+    // Destination (only in places.json)
+    let landmarkID: String?
+    let landmarkName: String?
+    let distanceM: Double?
+
     var id: String { restaurantID }
     
     enum CodingKeys: String, CodingKey {
@@ -51,6 +56,9 @@ struct Restaurant: Decodable, Identifiable {
         case ingredientFlags = "ingredient_flags"
         case allergensPresent = "allergens_present"
         case halalStatus = "halal_status"
+        case landmarkID = "landmark_id"
+        case landmarkName = "landmark_name"
+        case distanceM = "distance_m"
     }
     
     init(from decoder: Decoder) throws {
@@ -70,5 +78,14 @@ struct Restaurant: Decodable, Identifiable {
         ingredientFlags = try container.decodeIfPresent([String].self, forKey: .ingredientFlags) ?? []
         allergensPresent = try container.decodeIfPresent([String].self, forKey: .allergensPresent) ?? []
         halalStatus = try container.decodeIfPresent(String.self, forKey: .halalStatus) ?? "unknown"
+        landmarkID = try container.decodeIfPresent(String.self, forKey: .landmarkID)
+        landmarkName = try container.decodeIfPresent(String.self, forKey: .landmarkName)
+        distanceM = try container.decodeIfPresent(Double.self, forKey: .distanceM)
     }
+}
+
+// MARK: - Destination
+struct Destination: Identifiable, Hashable {
+    let id: String
+    let name: String
 }

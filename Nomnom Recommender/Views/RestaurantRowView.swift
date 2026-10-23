@@ -12,6 +12,7 @@ struct RestaurantRowView: View {
     let restaurant: Restaurant
     var scores: RecommendationScores? = nil
     var rank: Int? = nil
+    var warnings: [String] = []
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -25,10 +26,14 @@ struct RestaurantRowView: View {
                         .foregroundStyle(.tint)
                 }
             }
+            
+            Text(restaurant.address ?? "Near \(restaurant.landmarkName)")
+                .font(.subheadline)
 
             Text(labels(restaurant.cuisine))
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
+            
 
             HStack {
                 Text("\(restaurant.priceMinIDR.formattedIDR) – \(restaurant.priceMaxIDR.formattedIDR)")
@@ -40,6 +45,16 @@ struct RestaurantRowView: View {
                 Text(labels(tags))
                     .font(.caption)
                     .foregroundStyle(.secondary)
+            }
+
+            if !warnings.isEmpty {
+                VStack(alignment: .leading, spacing: 2) {
+                    ForEach(warnings, id: \.self) { warning in
+                        Label(warning, systemImage: "exclamationmark.triangle.fill")
+                    }
+                }
+                .font(.caption)
+                .foregroundStyle(.orange)
             }
 
             if let scores {
